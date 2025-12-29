@@ -1,3 +1,8 @@
 .env
 __pycache__/
 .venv/
+
+# memory of agent
+
+agent_memory_checkpoints.db*
+agent_workflow_checkpoints.db*
