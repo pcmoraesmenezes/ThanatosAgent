@@ -5,7 +5,6 @@ class ICatalogRepository(ABC):
     
     @abstractmethod
     async def search_full_text(self, query: str, limit: int = 5) -> List[Dict[str, Any]]:
-        """Busca produtos via Full-Text Search no DB."""
         pass
 
     @abstractmethod
@@ -13,8 +12,7 @@ class ICatalogRepository(ABC):
                                        url: str, 
                                        domain: str, 
                                        title: str, 
-                                       price: float, 
+                                       price: Optional[float],
                                        specs: Dict,
                                        description: Optional[str] = None) -> str:
-        """Insere ou atualiza produto e registra histórico de preço."""
         pass
