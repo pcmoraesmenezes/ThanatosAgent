@@ -3,11 +3,10 @@ from fastapi import APIRouter, Request, HTTPException
 from langchain_core.messages import HumanMessage, RemoveMessage
 
 from src.telegram.message import send_message
+from src.telegram.renderer import format_telegram_message 
 from src.core.logger import logger
 
-
 router = APIRouter()
-
 
 @router.post("/webhook")
 async def telegram_webhook(request: Request):
@@ -28,27 +27,24 @@ async def telegram_webhook(request: Request):
 
         if text.strip().lower() == "/clean":
             logger.info(f"/clean comma received: {chat_id}")
-            
             current_state = await agent_workflow.aget_state(config)
-            
             if current_state and "messages" in current_state.values:
                 messages = current_state.values["messages"]
-                
                 delete_messages = [RemoveMessage(id=m.id) for m in messages if hasattr(m, 'id')]
-                
                 if delete_messages:
                     await agent_workflow.aupdate_state(config, {"messages": delete_messages})
             
-            await send_message(chat_id, "💀 <b>O Abismo observou.</b>\n\nSuas memórias foram consumidas pelo vazio. O ciclo se encerra aqui.\nEstamos sós novamente.")
+            await send_message(chat_id, "💀 <b>O Abismo observou.</b>\n\nMemórias apagadas.")
             return {"status": 'cleaned'}
 
         initial_state = {"messages": [HumanMessage(content=text)]}
-        
         result = await agent_workflow.ainvoke(initial_state, config=config) 
         
         last_message = result["messages"][-1]
-        response_message = last_message.content
+        raw_content = last_message.content
         
-        await send_message(chat_id, response_message)
+        final_html = format_telegram_message(raw_content)
+        
+        await send_message(chat_id, final_html)
             
     return {"status": 'ok'}
