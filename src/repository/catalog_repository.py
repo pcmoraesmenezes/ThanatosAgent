@@ -7,6 +7,7 @@ from decimal import Decimal
 
 from src.interface.catalog_interface import ICatalogRepository
 from src.core.database import db_manager
+from src.core.logger import logger
 
 
 class CatalogRepository(ICatalogRepository):
@@ -36,16 +37,10 @@ class CatalogRepository(ICatalogRepository):
                                        url: str, 
                                        domain: str, 
                                        title: str, 
-                                       price: float | str | Decimal, 
+                                       price: Optional[Decimal],
                                        specs: Dict,
                                        description: Optional[str] = None) -> str:
-        
-        
-        if isinstance(price, float):
-            price = Decimal(str(price))
-        elif isinstance(price, str):
-            clean_price = price.replace("R$", "").replace(".", "").replace(",", ".").strip()
-            price = Decimal(clean_price)        
+
         sql_product = text("""
             INSERT INTO products (url, domain, title, description, specs)
             VALUES (:url, :domain, :title, :desc, :specs)
@@ -71,9 +66,12 @@ class CatalogRepository(ICatalogRepository):
                 })
                 product_id = result.scalar()
 
-                await session.execute(sql_price, {
-                    "pid": product_id,
-                    "price": price
-                })
+                if price is not None:
+                    await session.execute(sql_price, {
+                        "pid": product_id,
+                        "price": price
+                    })
+                else:
+                    logger.warning(f"Product registered without price: {title}")
                 
         return str(product_id)
