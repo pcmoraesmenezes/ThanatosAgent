@@ -37,7 +37,7 @@ async def telegram_webhook(request: Request):
             await send_message(chat_id, "💀 <b>O Abismo observou.</b>\n\nMemórias apagadas.")
             return {"status": 'cleaned'}
 
-        initial_state = {"messages": [HumanMessage(content=text)]}
+        initial_state = {"messages": [HumanMessage(content=f"User_ID: {chat_id} \n {text}")]}
         result = await agent_workflow.ainvoke(initial_state, config=config) 
         
         last_message = result["messages"][-1]

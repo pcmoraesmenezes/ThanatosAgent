@@ -8,10 +8,16 @@ from psycopg_pool import AsyncConnectionPool
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langchain_groq import ChatGroq
 
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+
 
 from src.agent.workflow import build_agent_graph
 from src.core.settings import settings
 from src.core.logger import logger
+from src.services.watchdog_service import WatchdogService
+
+
+scheduler = AsyncIOScheduler()
 
 
 @asynccontextmanager
@@ -46,6 +52,12 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.critical(f"Failed to build Agent Graph: {e}")
             raise e
+        
+        watchdog = WatchdogService()
+        
+        scheduler.add_job(watchdog.run_cycle, 'interval', minutes=30)
+        scheduler.start()
+        logger.info("🕰️ Watchdog Scheduler started (Interval: 30min).")
 
         webhook_url = f"{settings.ngrok_url}/webhook"
         logger.info(f"Setting webhook URL to: {webhook_url}")
