@@ -73,3 +73,17 @@ CREATE INDEX IF NOT EXISTS idx_products_active ON products(is_active);
 
 DROP INDEX IF EXISTS idx_price_history_product_date;
 CREATE INDEX idx_price_history_product_date ON price_history (product_id, scraped_at DESC);
+
+
+
+CREATE TABLE price_alerts (
+    alert_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    product_id UUID NOT NULL REFERENCES products(product_id) ON DELETE CASCADE,
+    chat_id BIGINT NOT NULL, 
+    target_price NUMERIC(14, 2) NOT NULL, 
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    last_checked_at TIMESTAMPTZ
+);
+
+CREATE INDEX idx_alerts_active ON price_alerts(is_active) WHERE is_active = TRUE;

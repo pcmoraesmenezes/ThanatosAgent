@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "aiosqlite>=0.22.0",
+    "apscheduler>=3.11.2",
     "asyncpg>=0.31.0",
     "beautifulsoup4>=4.14.3",
     "bs4>=0.0.2",
