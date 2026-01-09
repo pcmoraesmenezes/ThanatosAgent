@@ -12,6 +12,7 @@ from langchain_core.tools import tool
 from src.core.settings import settings
 from src.core.logger import logger
 from src.services.scrapper_service import ScraperEngine
+from src.services.catalog_service import CatalogService 
 
 
 def classify_url_pattern(url: str) -> Optional[str]:
@@ -42,6 +43,7 @@ def classify_url_pattern(url: str) -> Optional[str]:
 
 
 async def smart_scrape(client: httpx.AsyncClient, item: dict, engine: ScraperEngine) -> dict:
+    # ... (Manter código existente igual) ...
     if item["type"] == "OPTION_LIST":
         item['final_price'] = "Ver Opções"
         item['is_available'] = True
@@ -97,10 +99,12 @@ async def smart_scrape(client: httpx.AsyncClient, item: dict, engine: ScraperEng
 async def search_web_products(query: str) -> str:
     """
     Searches for products on the web using a smart scraping engine.
+    AUTOMATICALLY SAVES found products to the database.
     """
     logger.info(f"Starting smart search for: {query}")
 
     local_engine = ScraperEngine()
+    catalog_service = CatalogService() 
     
     candidates = []
     async with httpx.AsyncClient() as client:
@@ -148,18 +152,42 @@ async def search_web_products(query: str) -> str:
             await asyncio.gather(*tasks)
 
     final_results = []
+    
+    save_tasks = []
+    
     for item in candidates:
         if not item.get("is_available", True):
             continue
             
+        price_val = item.get("final_price", "Ver no Site")
+        
         res = {
             "title": item["title"],
             "url": item["link"],
             "store": item["source"],
-            "price": item.get("final_price", "Ver no Site"),
+            "price": price_val,
             "original_price": item.get("original_price")
         }
         final_results.append(res)
+        
+        if isinstance(price_val, (int, float)) or (isinstance(price_val, str) and "R$" in price_val):
+            logger.info(f"Auto-saving product: {item['title'][:30]}...")
+            save_tasks.append(
+                catalog_service.register_product(
+                    url=item["link"],
+                    title=item["title"],
+                    price=price_val,
+                    description=f"Auto-saved from search: {query}", 
+                    specs={"source": item.get("source")}
+                )
+            )
+    
+    if save_tasks:
+        try:
+            await asyncio.gather(*save_tasks)
+            logger.info(f"Successfully auto-saved {len(save_tasks)} products.")
+        except Exception as e:
+            logger.error(f"Error in auto-save routine: {e}")
 
     final_results.sort(key=lambda x: (
         str(x["price"]) == "Ver no Site",
