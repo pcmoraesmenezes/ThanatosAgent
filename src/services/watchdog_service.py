@@ -62,11 +62,11 @@ class WatchdogService:
             logger.info(f"🚨 TARGET HIT! Alert {alert['alert_id']}: {current_price} <= {target}")
             
             msg = (
-                f"🚨 <b>ALERTA DE PREÇO ATINGIDO!</b>\n\n"
+                f"🚨 <b>PRICE ALERT HIT!</b>\n\n"
                 f"📦 {alert['title']}\n"
-                f"🎯 Alvo: R$ {target:.2f}\n"
-                f"🔥 <b>Atual: R$ {current_price:.2f}</b>\n\n"
-                f"🔗 <a href='{url}'>COMPRAR AGORA</a>"
+                f"🎯 Target: $ {target:.2f}\n"
+                f"🔥 <b>Current: $ {current_price:.2f}</b>\n\n"
+                f"🔗 <a href='{url}'>BUY NOW</a>"
             )
             await send_message(alert['chat_id'], msg)
             

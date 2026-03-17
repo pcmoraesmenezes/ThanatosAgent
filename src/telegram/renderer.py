@@ -3,12 +3,37 @@ import html
 
 
 def format_telegram_message(llm_response: str) -> str:
+    """
+    Renders the Agent's JSON response into a formatted HTML message for Telegram.
+    Supports bilingual UI labels based on the 'lang' field (pt/en).
+    """
     try:
         clean_response = llm_response.replace("```json", "").replace("```", "").strip()
         data = json.loads(clean_response)
         
         if not isinstance(data, dict):
             return html.escape(llm_response)
+        
+        lang = data.get("lang", "en").lower()
+        
+        labels = {
+            "en": {
+                "view_offer": "View Offer",
+                "price": "Price",
+                "source": "Source",
+                "on_request": "On Request",
+                "out_of_stock": "Out of Stock"
+            },
+            "pt": {
+                "view_offer": "Ver Oferta",
+                "price": "Preço",
+                "source": "Fonte",
+                "on_request": "Sob Consulta",
+                "out_of_stock": "Esgotado"
+            }
+        }
+        
+        t = labels.get(lang, labels["en"])
         
         message = ""
         
@@ -18,39 +43,35 @@ def format_telegram_message(llm_response: str) -> str:
         items = data.get("items", [])
         if items:
             for item in items:
-                title = html.escape(item.get('title', 'Produto'))
+                title = html.escape(item.get('title', 'Product'))
                 url = item.get('url', '#')
                 
                 price = item.get("price")
                 original_price = item.get("original_price")
                 
                 if not price or str(price).lower() == "none":
-                    price = "Sob Consulta"
-                elif "R$" not in str(price) and str(price).replace(".", '', 1).isdigit():
-                    price = f"R$ {price}"
-
+                    price = t["on_request"]
+                
                 price_str = str(price).lower()
                 source_str = str(item.get("source", "")).lower()
 
-                if "opções" in price_str or "lista" in source_str:
+                if "options" in price_str or "list" in source_str:
                     icon = "📋" 
-                elif "ver no site" in price_str or "sob consulta" in price_str:
+                elif any(x in price_str for x in ["view", "site", "consulta", "request"]):
                     icon = "🔎" 
                 else:
                     icon = "📦"
 
                 message += f"{icon} <b>{title}</b>\n"
-                message += f"🔗 <a href=\"{url}\">Ver Oferta</a>\n"
+                message += f"🔗 <a href=\"{url}\">{t['view_offer']}</a>\n"
                 
                 if original_price and original_price != "null" and original_price != price:
-                     if "R$" not in str(original_price): 
-                         original_price = f"R$ {original_price}"
-                     message += f"💰 <b>Preço:</b> <s>{original_price}</s> ➔ <b>{price}</b> 🔥\n"
+                     message += f"💰 <b>{t['price']}:</b> <s>{original_price}</s> ➔ <b>{price}</b> 🔥\n"
                 else:
-                    message += f"💰 <b>Preço:</b> {price}\n"
+                     message += f"💰 <b>{t['price']}:</b> {price}\n"
                 
-                source = html.escape(item.get("source", "Loja"))
-                message += f"🏪 <b>Fonte:</b> {source}\n"
+                source = html.escape(item.get("source", "Store"))
+                message += f"🏪 <b>{t['source']}:</b> {source}\n"
                 
                 message += "\n"
             

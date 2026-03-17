@@ -9,21 +9,30 @@ from src.core.logger import logger
 
 
 class CatalogService:
+    """
+    Business logic layer for managing the product catalog and price analysis.
+    Provides services for searching, registering products, and calculating discounts.
+    """
     def __init__(self, repository: ICatalogRepository = None):
         self.repository = repository or CatalogRepository()    
         getcontext().prec = 6
     
     async def search_products(self, query: str) -> List[Dict]:
+        """
+        Searches for products in the local catalog using semantic embeddings.
+        """
         vector = embedding_service.get_embedding(query)
-        
         return await self.repository.search_hybrid(query_text=query, query_vector=vector)
     
     def _sanitize_price(self, price: float | str) -> Optional[Decimal]:
+        """
+        Sanitizes and converts various price formats into a Decimal value.
+        """
         if isinstance(price, (float, int)):
             return Decimal(str(price))
         
         if isinstance(price, str):
-            clean = price.replace("R$", "").replace(" ", "").replace("\xa0", "")
+            clean = price.replace("R$", "").replace(" ", "").replace("\xa0", "").replace("$", "")
             
             if "," in clean:
                 clean = clean.replace(".", "").replace(",", ".")
@@ -43,16 +52,16 @@ class CatalogService:
                              price: float | str, 
                              description: str = "",
                              specs: dict = {}) -> str:
-        
+        """
+        Registers or updates a product in the catalog, generating embeddings and sanitizing the price.
+        """
         try:
             domain = urlparse(url).netloc
         except:
             domain = "unknown"
 
         final_price = self._sanitize_price(price)
-        
         text_to_embed = f"{title}. {description or ''}"
-        
         vector = embedding_service.get_embedding(text_to_embed)
 
         return await self.repository.upsert_product_and_price(
@@ -65,14 +74,15 @@ class CatalogService:
             embedding=vector 
         )
 
-
     async def calculate_real_discount(self, product_id: str, current_price: Decimal | float) -> Dict[str, Any]:
+        """
+        Calculates the real discount percentage based on the average price of the last 30 days.
+        """
         if not isinstance(current_price, Decimal):
             try:
                 current_price = Decimal(str(current_price))
             except:
                 return {"error": "invalid price format"}
-            
             
         sum_30d = await self.repository.get_average_price_last_30_days(product_id=product_id)
         
@@ -80,26 +90,22 @@ class CatalogService:
             return {
                 "real_discount_percent": 0,
                 "is_real_offer": False,
-                "message": "Unsuficient history to statistical analysis",
+                "message": "Insufficient history for statistical analysis",
                 "sum_30d": None
             }
             
-        
         discount_ratio = Decimal(1) - (current_price / sum_30d)
         discount_percent = discount_ratio * 100
-        
         is_real_offer = discount_ratio > 15
         
         status_msg = ""
         
         if is_real_offer:
-            status_msg = f'Real offer!: {discount_percent:.1f}% below of mean from previous 30 days'
-            
+            status_msg = f'Real offer!: {discount_percent:.1f}% below the average of the previous 30 days'
         elif discount_percent > 0:
-            status_msg = f'Shiny discount. {discount_percent:.1f}% Inside standard desviation'    
-            
+            status_msg = f'Minor discount: {discount_percent:.1f}% within standard deviation'    
         else:
-            status_msg = "beware! inflact price"
+            status_msg = "Beware: inflated price"
             
         return {
             "real_discount_percent": round(float(discount_percent), 2),
@@ -108,4 +114,5 @@ class CatalogService:
             "sum_30d": round(float(sum_30d), 2),
             "current_price": round(float(current_price), 2)
         }
+
         

@@ -34,7 +34,7 @@ async def telegram_webhook(request: Request):
                 if delete_messages:
                     await agent_workflow.aupdate_state(config, {"messages": delete_messages})
             
-            await send_message(chat_id, "💀 <b>O Abismo observou.</b>\n\nMemórias apagadas.")
+            await send_message(chat_id, "💀 <b>The Abyss observed.</b>\n\nMemories erased.")
             return {"status": 'cleaned'}
 
         initial_state = {"messages": [HumanMessage(content=f"User_ID: {chat_id} \n {text}")]}

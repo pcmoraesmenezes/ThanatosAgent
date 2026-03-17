@@ -87,3 +87,63 @@ CREATE TABLE price_alerts (
 );
 
 CREATE INDEX idx_alerts_active ON price_alerts(is_active) WHERE is_active = TRUE;
+
+
+ALTER TABLE products 
+ADD COLUMN IF NOT EXISTS current_price NUMERIC(14, 2),
+ADD COLUMN IF NOT EXISTS previous_price NUMERIC(14, 2),
+ADD COLUMN IF NOT EXISTS lowest_price_30d NUMERIC(14, 2),
+ADD COLUMN IF NOT EXISTS price_change_percent NUMERIC(10, 2) DEFAULT 0.0,
+ADD COLUMN IF NOT EXISTS last_price_change_at TIMESTAMPTZ DEFAULT NOW();
+
+CREATE OR REPLACE FUNCTION update_product_price_metrics()
+RETURNS TRIGGER AS $$
+DECLARE
+    v_old_price NUMERIC(14,2);
+    v_lowest_30d NUMERIC(14,2);
+    v_percent_change NUMERIC(10,2);
+BEGIN
+    SELECT current_price INTO v_old_price 
+    FROM products 
+    WHERE product_id = NEW.product_id;
+
+    IF v_old_price IS NULL THEN
+        v_old_price := NEW.price_amount;
+        v_percent_change := 0;
+    ELSE
+        IF v_old_price > 0 THEN
+            v_percent_change := ((NEW.price_amount - v_old_price) / v_old_price) * 100.0;
+        ELSE
+            v_percent_change := 0;
+        END IF;
+    END IF;
+
+    SELECT MIN(price_amount) INTO v_lowest_30d
+    FROM price_history
+    WHERE product_id = NEW.product_id
+      AND scraped_at >= NOW() - INTERVAL '30 days';
+    
+    IF NEW.price_amount < COALESCE(v_lowest_30d, NEW.price_amount) THEN
+        v_lowest_30d := NEW.price_amount;
+    END IF;
+
+    UPDATE products 
+    SET 
+        previous_price = v_old_price,
+        current_price = NEW.price_amount,
+        price_change_percent = ROUND(v_percent_change, 2),
+        lowest_price_30d = COALESCE(v_lowest_30d, NEW.price_amount),
+        last_price_change_at = NOW(),
+        last_updated_at = NOW()
+    WHERE product_id = NEW.product_id;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_refresh_product_metrics ON price_history;
+
+CREATE TRIGGER trg_refresh_product_metrics
+AFTER INSERT ON price_history
+FOR EACH ROW
+EXECUTE FUNCTION update_product_price_metrics();

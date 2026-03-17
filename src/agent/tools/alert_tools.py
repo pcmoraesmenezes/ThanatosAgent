@@ -31,7 +31,7 @@ async def create_price_alert(url: str, target_price: float, chat_id: int) -> str
         
         alert_id = await alert_repo.create_alert(product_id, chat_id, target_price)
         
-        return f"Vigilância iniciada. Alerta ID {alert_id} definido para R$ {target_price:.2f}."
+        return f"Vigilance started. Alert ID {alert_id} set for $ {target_price:.2f}."
     except Exception as e:
         logger.error(f"Failed to create alert: {e}")
         return "Erro ao criar alerta. Verifique a URL."

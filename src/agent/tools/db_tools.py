@@ -7,6 +7,41 @@ from src.services.catalog_service import CatalogService
 catalog_service = CatalogService()
 
 
+def _format_product_context(products: list) -> str:
+    """
+    Formats a list of product records into a readable string context for the LLM.
+    """
+    context_list = []
+    
+    for product in products:
+        price = float(product.get('price_amount') or 0)
+        pct_change = float(product.get('price_change_percent') or 0)
+        low_30d = float(product.get('lowest_price_30d') or 0)
+        
+        trend_msg = "Stable"
+
+        if pct_change < -1.0:
+            trend_msg = f"PRICE DROP! Down {abs(pct_change)}% (Was $ {product.get('previous_price')})"
+
+        elif pct_change > 1.0:
+            trend_msg = f"PRICE INCREASE! Up {pct_change}% (Was $ {product.get('previous_price')})"
+            
+        is_good_deal = price <= low_30d
+        deal_tag = '[BEST PRICE IN 30 DAYS]' if is_good_deal and price > 0 else ""
+        
+        item = {
+            "title": product['title'],
+            'current_price': f'$ {price:.2f}',
+            'trend': trend_msg,
+            'analysis': deal_tag,
+            'url': product['url']
+        }      
+        
+        context_list.append(item)
+        
+    return str(context_list)
+
+
 @tool
 async def check_local_database(query: str) -> str:
     """
@@ -26,7 +61,7 @@ async def check_local_database(query: str) -> str:
     results = await catalog_service.search_products(query)
     if not results:
         return "No results found in the local database."
-    return str(results)
+    return _format_product_context(results)
 
 
 @tool

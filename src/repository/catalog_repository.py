@@ -11,19 +11,28 @@ from src.core.logger import logger
 
 
 class CatalogRepository(ICatalogRepository):
+    """
+    Handles persistence and retrieval of products and price history from the database.
+    Implements a hybrid search using both full-text and vector-based methods.
+    """
     
     async def search_full_text(self, query: str, limit: int = 5) -> List[Dict[str, Any]]:
+        """
+        Performs a full-text search on the product catalog using PostgreSQL's tsvector.
+        """
         sql = text("""
-            SELECT 
-                product_id, title, url, price_amount, currency, description
-            FROM products p
-            JOIN LATERAL (
-                SELECT price_amount, currency 
-                FROM price_history ph 
-                WHERE ph.product_id = p.product_id 
-                ORDER BY scraped_at DESC LIMIT 1
-            ) latest_price ON true
+            SELECT
+                product_id,
+                tile,
+                url,
+                description,
+                current_price as price_amount,
+                previous_price,
+                price_change_percent,
+                lowest_price_30d
+            FROM products
             WHERE search_vector @@ websearch_to_tsquery('portuguese', :q)
+            AND is_active = TRUE
             ORDER BY ts_rank(search_vector, websearch_to_tsquery('portuguese', :q)) DESC
             LIMIT :limit;
         """)
@@ -41,7 +50,10 @@ class CatalogRepository(ICatalogRepository):
                                        specs: Dict,
                                        description: Optional[str] = None,
                                        embedding: Optional[List[float]] = None) -> str: 
-
+        """
+        Inserts or updates a product and its current price.
+        If the product exists, updates its metadata. Always adds a new record to price history.
+        """
         sql_product = text("""
             INSERT INTO products (url, domain, title, description, specs, embedding, is_active)
             VALUES (:url, :domain, :title, :desc, :specs, :embedding, TRUE)
@@ -49,7 +61,7 @@ class CatalogRepository(ICatalogRepository):
             SET title = EXCLUDED.title,
                 description = EXCLUDED.description,
                 specs = EXCLUDED.specs,
-                embedding = EXCLUDED.embedding, -- Atualiza o vetor se o produto mudar
+                embedding = EXCLUDED.embedding,
                 last_updated_at = NOW(),
                 is_active = TRUE
             RETURNING product_id;
@@ -84,8 +96,10 @@ class CatalogRepository(ICatalogRepository):
                 
         return str(product_id)
     
-    
     async def get_average_price_last_30_days(self, product_id: str) -> Optional[Decimal]:
+        """
+        Calculates the average price of a product over the last 30 days.
+        """
         sql = text(
             """
                 SELECT AVG(price_amount)
@@ -104,11 +118,10 @@ class CatalogRepository(ICatalogRepository):
                 return Decimal(avg_price)
             return None
         
-        
     async def search_hybrid(self, query_text: str, query_vector: List[float], limit: int = 5) -> List[Dict[str, Any]]:
         """
-        Busca Híbrida (Texto + Vetor) com RRF (Reciprocal Rank Fusion).
-        Vetor: 384 dim (Local)
+        Performs a hybrid search (Text + Vector) using Reciprocal Rank Fusion (RRF).
+        Uses a 384-dimension local embedding vector.
         """
         sql = text("""
             WITH semantic_search AS (
@@ -134,24 +147,19 @@ class CatalogRepository(ICatalogRepository):
                 p.title, 
                 p.url, 
                 p.description,
-                latest.price_amount, 
-                latest.currency,
+                p.current_price as price_amount,
+                p.previous_price,
+                p.price_change_percent,
+                p.lowest_price_30d,
                 (COALESCE(s.score_vec, 0.0) + COALESCE(k.score_text, 0.0)) AS final_score
             FROM products p
             LEFT JOIN semantic_search s ON p.product_id = s.product_id
             LEFT JOIN keyword_search k ON p.product_id = k.product_id
-            LEFT JOIN LATERAL (
-                SELECT price_amount, currency 
-                FROM price_history ph 
-                WHERE ph.product_id = p.product_id 
-                ORDER BY scraped_at DESC 
-                LIMIT 1
-            ) latest ON true
             WHERE (COALESCE(s.score_vec, 0.0) + COALESCE(k.score_text, 0.0)) > 0
             ORDER BY final_score DESC
             LIMIT :limit;
         """)
-        
+
         async with await db_manager.get_session() as session:
             result = await session.execute(sql, {
                 "q": query_text, 

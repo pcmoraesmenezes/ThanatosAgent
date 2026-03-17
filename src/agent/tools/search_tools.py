@@ -16,23 +16,37 @@ from src.services.catalog_service import CatalogService
 
 
 def classify_url_pattern(url: str) -> Optional[str]:
+    """
+    Classifies a URL into a 'PRODUCT LIST' or 'SINGLE PRODUCT' based on common patterns.
+    Stricly excludes non-commercial domains.
+    """
     url_lower = url.lower()
+    
+    strict_blacklist = [
+        'wikipedia.org', 'youtube.com', 'reddit.com', 'facebook.com', 
+        'instagram.com', 'twitter.com', 'x.com', 'pinterest.com',
+        'tiktok.com', 'linkedin.com', 'quora.com', 'medium.com'
+    ]
+    if any(domain in url_lower for domain in strict_blacklist):
+        return None
+
     blacklist = [
-        'youtube.com', 'instagram.com', 'facebook.com', 
-        'login', 'signin', 'cadastro', 'reclameaqui', 'buscacep',
-        '/cart', '/checkout', '/minha-conta'
+        'login', 'signin', 'signup', 'reclameaqui', 'zip-code',
+        '/cart', '/checkout', '/my-account', 'suporte', 'ajuda', 'help'
     ]
     if any(x in url_lower for x in blacklist):
         return None
 
     list_patterns = [
-        r'/s\?k=', r'search', r'busca', r'lista', 
+        r'/s\?k=', r'search', r'query', r'list', 
         r'/b/', r'category', r'nav', r'\?q=',
-        r'shop/', r'promocao', r'ofertas',
-        r'/c/', r'/d/', r'/cat/', 
-        r'departamento', r'categoria', r'secao', 
-        r'colecao', r'linha', r'marcas',
-        r'/produtos\?','/todos-os-produtos'
+        r'shop/', r'promo', r'offers', r'oferta',
+        r'/c/', r'/d/', r'/cat/', r'vitrine',
+        r'department', r'section', r'secao',
+        r'collection', r'brand', r'marca',
+        r'/products\?', '/all-products', r'todos-os-produtos',
+        r'/consoles-e-games/', r'/hardware/', r'/perifericos/',
+        r'/espaco-gamer/', r'/gaming-setup/'
     ]
     
     for pattern in list_patterns:
@@ -43,9 +57,11 @@ def classify_url_pattern(url: str) -> Optional[str]:
 
 
 async def smart_scrape(client: httpx.AsyncClient, item: dict, engine: ScraperEngine) -> dict:
-    # ... (Manter código existente igual) ...
+    """
+    Attempts to extract structural data from a product page using the scraping engine.
+    """
     if item["type"] == "OPTION_LIST":
-        item['final_price'] = "Ver Opções"
+        item['final_price'] = "See Options"
         item['is_available'] = True
         return item
 
@@ -62,7 +78,7 @@ async def smart_scrape(client: httpx.AsyncClient, item: dict, engine: ScraperEng
             item['is_available'] = price_result.is_available
             
             if not item['is_available']:
-                item['final_price'] = "Indisponível"
+                item['final_price'] = "Out of Stock"
                 return item
 
             curr = price_result.current_price
@@ -77,31 +93,36 @@ async def smart_scrape(client: httpx.AsyncClient, item: dict, engine: ScraperEng
                 soup = BeautifulSoup(resp.text, 'html.parser')
                 page_title = soup.title.get_text().lower() if soup.title else ""
                 
-                list_indicators = ["departamento", "categoria", "produtos", "seleção", "melhores", "loja"]
+                list_indicators = ["department", "category", "products", "selection", "best", "store"]
                 
                 if any(ind in page_title for ind in list_indicators):
-                    item['final_price'] = "Ver Opções"
+                    item['final_price'] = "See Options"
                 else:
-                    item['final_price'] = "Ver no Site"
+                    item['final_price'] = "View on Site"
         else:
-            item['final_price'] = "Erro Conexão"
+            item['final_price'] = "Connection Error"
             item['is_available'] = False
             
     except Exception as e:
         logger.warning(f"Failed to access {item['link']}: {e}")
-        item['final_price'] = "Erro Acesso"
+        item['final_price'] = "Access Error"
         item['is_available'] = False
         
     return item
 
 
 @tool
-async def search_web_products(query: str) -> str:
+async def search_web_products(query: str, gl: str = "us", hl: str = "en") -> str:
     """
-    Searches for products on the web using a smart scraping engine.
-    AUTOMATICALLY SAVES found products to the database.
+    Searches for products on the web. Specify 'gl' (country code, e.g., 'br' or 'us') 
+    and 'hl' (language code, e.g., 'pt-br' or 'en') based on the user's intent.
+    
+    Args:
+        query (str): The product search query.
+        gl (str): Country code for the search (default: 'us').
+        hl (str): Language code for the search (default: 'en').
     """
-    logger.info(f"Starting smart search for: {query}")
+    logger.info(f"Smart search for: {query} | Market: {gl} | Language: {hl}")
 
     local_engine = ScraperEngine()
     catalog_service = CatalogService() 
@@ -109,7 +130,7 @@ async def search_web_products(query: str) -> str:
     candidates = []
     async with httpx.AsyncClient() as client:
         headers = {'X-API-KEY': settings.serper_api_key, 'Content-Type': 'application/json'}
-        payload = json.dumps({'q': query, 'gl': 'br', 'hl': 'pt-br', 'num': 8}) 
+        payload = json.dumps({'q': query, 'gl': gl, 'hl': hl, 'num': 8}) 
         
         try:
             res = await client.post('https://google.serper.dev/search', headers=headers, data=payload)
@@ -130,7 +151,10 @@ async def search_web_products(query: str) -> str:
 
         for item in data.get("organic", []):
             url_type = classify_url_pattern(item.get("link", ""))
-            final_price = "Ver Opções" if url_type == "OPTION_LIST" else None
+            if url_type is None:
+                continue
+
+            final_price = "See Options" if url_type == "OPTION_LIST" else None
             price_detected = True if url_type == "OPTION_LIST" else False
 
             candidates.append({
@@ -152,14 +176,16 @@ async def search_web_products(query: str) -> str:
             await asyncio.gather(*tasks)
 
     final_results = []
-    
     save_tasks = []
     
+    is_pt = (gl.lower() == 'br')
+    currency_symbol = "R$" if is_pt else "$"
+
     for item in candidates:
         if not item.get("is_available", True):
             continue
             
-        price_val = item.get("final_price", "Ver no Site")
+        price_val = item.get("final_price", "View on Site")
         
         res = {
             "title": item["title"],
@@ -170,7 +196,7 @@ async def search_web_products(query: str) -> str:
         }
         final_results.append(res)
         
-        if isinstance(price_val, (int, float)) or (isinstance(price_val, str) and "R$" in price_val):
+        if isinstance(price_val, (int, float)) or (isinstance(price_val, str) and currency_symbol in price_val):
             logger.info(f"Auto-saving product: {item['title'][:30]}...")
             save_tasks.append(
                 catalog_service.register_product(
@@ -190,9 +216,9 @@ async def search_web_products(query: str) -> str:
             logger.error(f"Error in auto-save routine: {e}")
 
     final_results.sort(key=lambda x: (
-        str(x["price"]) == "Ver no Site",
-        str(x["price"]) == "Indisponível",
-        str(x["price"]) == "Ver Opções"
+        str(x["price"]) == "View on Site",
+        str(x["price"]) == "Out of Stock",
+        str(x["price"]) == "See Options"
     ))
 
     return json.dumps(final_results[:5], ensure_ascii=False, indent=2)

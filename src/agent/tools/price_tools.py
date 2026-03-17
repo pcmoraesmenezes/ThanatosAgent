@@ -19,7 +19,7 @@ async def check_price_from_url(url: str) -> str:
         url (str): The full URL of the product page (Amazon, Mercado Livre, etc).
 
     Returns:
-        str: A formatted string with 'price', 'original_price', and 'source'.
+        str: A formatted string with current price, original price, and source.
     """
     logger.info(f"Sniper check on: {url}")
     
@@ -41,11 +41,11 @@ async def check_price_from_url(url: str) -> str:
             result = engine.extract_price(resp.text, url)
             
             if not result.is_available:
-                return "Status: Indisponível/Esgotado"
+                return "Status: Out of Stock/Unavailable"
             
             if result.has_price:
                 return (
-                    f"Price: R$ {result.current_price:.2f} | "
+                    f"Price: $ {result.current_price:.2f} | "
                     f"Original: {result.original_price or 'N/A'} | "
                     f"Source: {result.source}"
                 )

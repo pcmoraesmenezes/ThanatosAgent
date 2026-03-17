@@ -6,8 +6,14 @@ from src.core.database import db_manager
 
 
 class AlertRepository:
+    """
+    Manages price alerts in the database, including creation, retrieval, and deactivation.
+    """
     
     async def create_alert(self, product_id: str, chat_id: int, target_price: float) -> int:
+        """
+        Creates a new price alert for a product and user.
+        """
         sql = text("""
             INSERT INTO price_alerts (product_id, chat_id, target_price)
             VALUES (:pid, :cid, :target)
@@ -24,7 +30,9 @@ class AlertRepository:
                 return result.scalar()
 
     async def get_active_alerts(self) -> List[Dict[str, Any]]:
-
+        """
+        Retrieves all currently active alerts along with product information.
+        """
         sql = text("""
             SELECT 
                 pa.alert_id, 
@@ -43,6 +51,9 @@ class AlertRepository:
             return [dict(row) for row in result.mappings().all()]
 
     async def deactivate_alert(self, alert_id: int):
+        """
+        Deactivates a specific alert by its ID.
+        """
         sql = text("UPDATE price_alerts SET is_active = FALSE WHERE alert_id = :aid")
         async with await db_manager.get_session() as session:
             async with session.begin():

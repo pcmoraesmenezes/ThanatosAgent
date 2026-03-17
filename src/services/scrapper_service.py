@@ -13,8 +13,11 @@ from src.domain.product import PriceExtractionResult
 
 
 class ScraperEngine:
+    """
+    Orchestrates the price extraction process by trying multiple scraping strategies.
+    Supports JSON-LD, Amazon, Mercado Livre, and OpenGraph.
+    """
     def __init__(self):
-
         self.strategies: List[IScrapingStrategy] = [
             JsonLdStrategy(),
             AmazonStrategy(),
@@ -23,7 +26,9 @@ class ScraperEngine:
         ]
 
     def extract_price(self, html: str, url: str) -> PriceExtractionResult:
-
+        """
+        Iterates through registered strategies to extract price data from HTML.
+        """
         soup = BeautifulSoup(html, 'html.parser')
         
         for strategy in self.strategies:
