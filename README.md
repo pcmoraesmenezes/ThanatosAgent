@@ -10,6 +10,23 @@ Thanatos is a stoic, AI-powered price monitoring assistant inspired by *Persona 
 
 ---
 
+## 🏗️ Architecture
+
+Thanatos uses a ReAct-style `LangGraph` architecture to handle dynamic tool calling and structured Postgres memory.
+
+```mermaid
+graph TD
+    A[User Message via Telegram] --> B((LangGraph Agent))
+    B -- Needs Data? --> C[ToolNode]
+    C -- Search Products --> D[(PostgreSQL<br>pg_trgm + pgvector)]
+    C -- Watchdog Tasks --> E[Watchdog Service]
+    C -- Web Search --> F[Serper API]
+    C --> B
+    B -- Final Response --> G[Telegram API]
+```
+
+---
+
 ## 🛠️ Local Execution Guide
 
 Follow these steps to deploy Thanatos in your local environment.
