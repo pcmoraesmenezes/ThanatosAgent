@@ -9,6 +9,20 @@ from src.agent.tools.tools import AGENT_TOOLS
 from src.core.logger import logger
 
 
+from langchain_core.messages import SystemMessage
+
+async def validator_node(state: AgentState) -> dict:
+    messages = state['messages']
+    last_msg = messages[-1]
+
+    if 'Error' in last_msg.content:
+        return {
+            "messages": [SystemMessage(content='Error')]
+        }
+
+    return {}
+
+
 
 def should_continue(state: AgentState) -> str:
     messages = state.get("messages", [])
@@ -35,6 +49,7 @@ def build_agent_graph(llm: BaseChatModel, checkpointer) -> Runnable:
 
     workflow.add_node("agent", agent_node)
     workflow.add_node("tools", tool_node) 
+    workflow.add_node("validator", validator_node)
 
     workflow.set_entry_point("agent")
     
@@ -44,7 +59,8 @@ def build_agent_graph(llm: BaseChatModel, checkpointer) -> Runnable:
         ["tools", END]
     )
     
-    workflow.add_edge("tools", "agent")
+    workflow.add_edge("tools", "validator")
+    workflow.add_edge("validator", "agent")
     
     return workflow.compile(
         checkpointer=checkpointer

@@ -23,7 +23,7 @@ class CatalogRepository(ICatalogRepository):
         sql = text("""
             SELECT
                 product_id,
-                tile,
+                title,
                 url,
                 description,
                 current_price as price_amount,
